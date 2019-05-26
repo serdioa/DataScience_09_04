@@ -13,5 +13,6 @@ trendTypes <- list("Simple moving average" = "SMA",
                    "Exponential moving average" = "EMA",
                    "Instantaneous Trendline" = "IT",
                    "Buttleworth 2-Pole" = "B2P",
-                   "Buttleworth 3-Pole" = "B3P")
+                   "Buttleworth 3-Pole" = "B3P",
+                   "Low-Pass" = "LP")
 

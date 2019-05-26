@@ -13,56 +13,122 @@ library(plotly)
 # Define server logic required to draw a histogram
 shinyServer(function(input, output) {
 
-  output$distPlot <- renderPlotly({
+    output$distPlot <- renderPlotly({
+        ts <- DAX[[input$symbol]]$ts
+        pricePlot <- plot_ly(x = ts$ts)
+        pricePlot <- pricePlot %>%
+            add_trace(y = ts$adjusted, name = 'Price', type = 'scatter', mode = 'lines',
+                      line = list(
+                          color = 'rgb(0, 0, 0)',
+                          width = 1.5
+                      ))
 
-    # generate bins based on input$bins from ui.R
-    #x    <- faithful[, 2]
-    #bins <- seq(min(x), max(x), length.out = input$bins + 1)
+        fastTrend <- buildTrend(ts$adjusted, input$days[1], input$fastIndicatorType)
+        slowTrend <- buildTrend(ts$adjusted, input$days[2], input$slowIndicatorType)
 
-    # draw the histogram with the specified number of bins
-    #hist(x, breaks = bins, col = 'darkgray', border = 'white')
+        pricePlot <- pricePlot %>%
+            add_trace(y = fastTrend, name = 'Fast', type = 'scatter', mode = 'lines',
+                      line = list(
+                          color = 'rgb(255, 140, 0)',
+                          width = 2
+                      ))
+        pricePlot <- pricePlot %>%
+            add_trace(y = slowTrend, name = 'Slow', type = 'scatter', mode = 'lines',
+                      line = list(
+                          color = 'rgb(0, 64, 255)',
+                          width = 2
+                      ))
 
-      ts <- DAX[[input$symbol]]$ts
-      # plot(x = ts$ts, y = ts$close, type = "l")
-      # plot_ly(x = ts$ts, y = ts$close, type = 'scatter', mode = 'lines')
-      plot <- plot_ly(x = ts$ts)
-      if (input$showPrice) {
-        plot <- plot %>%
-              add_trace(y = ts$close, name = 'Price', type = 'scatter', mode = 'lines')
-      }
-      if (input$showTrend) {
-          if (input$trendType == "SMA") {
-              plot <- plot %>%
-                  add_trace(y = sma(ts$close, input$days), name = 'SMA', type = 'scatter', mode = 'lines')
-          } else if (input$trendType == "EMA") {
-              plot <- plot %>%
-                  add_trace(y = ema(ts$close, input$days), name = 'EMA', type = 'scatter', mode = 'lines')
-          } else if (input$trendType == "IT") {
-              plot <- plot %>%
-                  add_trace(y = insttrend(ts$close, input$days), name = 'Inst. Trendline', type = 'scatter', mode = 'lines')
-          } else if (input$trendType == "B2P") {
-              plot <- plot %>%
-                  add_trace(y = buttl2p(ts$close, input$days), name = 'Buttleworth 2-Pole', type = 'scatter', mode = 'lines')
-          } else if (input$trendType == "B3P") {
-              plot <- plot %>%
-                  add_trace(y = buttl3p(ts$close, input$days), name = 'Buttleworth 3-Pole', type = 'scatter', mode = 'lines')
-          }
-      }
-      return (plot)
-  })
+        trades <- findTrades(fastTrend, slowTrend)
 
-  output$selectedShowPrice <- renderText({
-      input$showPrice
-  })
+        buyTrades <- rep(NA, length(fastTrend))
+        buyTrades[trades$buy] <- ts$adjusted[trades$buy]
 
-  output$selectedTrendType <- renderText({
-      input$trendType
-  })
+        sellTrades <- rep(NA, length(fastTrend))
+        sellTrades[trades$sell] <- ts$adjusted[trades$sell]
 
-  output$selectedShowTrend <- renderText({
-      input$showTrend
-  })
+        pricePlot <- pricePlot %>%
+            add_trace(y = buyTrades, name = 'Buy', type = 'scatter', mode = 'markers',
+                      marker = list(
+                          color = 'rgb(0, 192, 0)',
+                          size = 12
+                      )) %>%
+            add_trace(y = sellTrades, name = 'Sell', type = 'scatter', mode = 'markers',
+                      marker = list(
+                          color = 'rgb(192, 0, 0)',
+                          size = 12
+                      )) %>%
+            layout(yaxis = list(
+                title = "Price"
+            ))
+
+        # Calculate development of capital.
+        # Multiply by 100 to get as %.
+        capital <- 100 * buildCapital(ts$ts, ts$adjusted, trades)
+        capitalFitted <- lm(capital ~ ts$ts) %>% fitted.values()
+
+        capitalPlot <- plot_ly(x = ts$ts) %>%
+            add_trace(y = capital, name = "Capital, %", type = "scatter", mode = "lines",
+                      line = list(
+                          color = 'rgb(0, 0, 0)',
+                          width = 1.5
+                      )) %>%
+        add_trace(y = capitalFitted, name = "Capital LM", type = "scatter", mode = "lines",
+                  line = list(
+                      color = 'rgb(0, 0, 192)',
+                      width = 2
+                  )) %>%
+            layout(yaxis = list(
+                title = "Capital"
+            ))
+
+        # Combine plots
+        combinedPlot <- subplot(pricePlot, capitalPlot, nrows = 2, shareX = TRUE,
+                                titleY = TRUE,
+                                heights = c(0.65, 0.35)) %>%
+            layout(xaxis = list(
+                title = "Date"
+            ))
+
+        return (combinedPlot)
+    })
+
+    output$trades <- renderDataTable({
+        ts <- DAX[[input$symbol]]$ts
+
+        fastTrend <- buildTrend(ts$adjusted, input$days[1], input$fastIndicatorType)
+        slowTrend <- buildTrend(ts$adjusted, input$days[2], input$slowIndicatorType)
+
+        trades <- findTrades(fastTrend, slowTrend)
+        tradeDescription <- buildTradeDescription(ts$ts, ts$adjusted, trades)
+
+        # Transform to %
+        tradeDescription$pl.pct <- round(tradeDescription$pl.pct * 100, digits = 4)
+        tradeDescription$pl.annualized <- round(tradeDescription$pl.annualized * 100, digits = 4)
+
+        names(tradeDescription) <- c("Direction", "Entry Date", "Entry Price",
+                                     "Exit Date", "Exit Price", "Trade P/L",
+                                     "Rate of Return, %", "Annualized Rate of Return, %")
+
+        return (tradeDescription)
+    })
 })
+
+buildTrend <- function(x, n, type) {
+    if (type == "SMA") {
+        return (sma(x, n))
+    } else if (type == "EMA") {
+        return (ema(x, n))
+    } else if (type == "IT") {
+        return (insttrend(x, n))
+    } else if (type == "B2P") {
+        return (buttl2p(x, n))
+    } else if (type == "B3P") {
+        return (buttl3p(x, n))
+    } else if (type == "LP") {
+        return (decycler(x, n))
+    }
+}
 
 sma <- function(x, n) {
     if (length(x) <= 0) {
@@ -149,7 +215,7 @@ insttrend <- function(x, n) {
     return (y)
 }
 
-buttl2p = function(x, n) {
+buttl2p <- function(x, n) {
     if (length(x) <= 0) {
         return (x)
     }
@@ -173,7 +239,7 @@ buttl2p = function(x, n) {
     return (y)
 }
 
-buttl3p = function(x, n) {
+buttl3p <- function(x, n) {
     if (length(x) <= 0) {
         return (x)
     }
@@ -198,3 +264,182 @@ buttl3p = function(x, n) {
 
     return (y)
 }
+
+decycler <- function(x, n) {
+    if (length(x) <= 0) {
+        return (x)
+    }
+
+    arg = 2.0 * pi / n;
+    c = cos(arg);
+    s = sin(arg);
+    alpha = (c + s - 1) / c;
+
+    c1 = alpha / 2.0;
+    c2 = (1.0 - alpha);
+
+    y <- x
+    for (i in 1:length(x)) {
+        if (i == 1) {
+            y[i] = x[i]
+        } else {
+            y[i] <- c1 * (x[i] + x[i - 1]) + c2 * y[i - 1]
+        }
+    }
+
+    return (y)
+}
+
+
+findTrades <- function(fast, slow) {
+    lng <- length(fast)
+    trades <- data.frame(fast = fast, slow = slow)
+    trades$buy <- FALSE
+    trades$sell <- FALSE
+
+    # TRUE - long, FALSE - short
+    side <- NA
+    for (i in 1:lng) {
+        if (is.na(side)) {
+            # We do not have any position yet. Open position based on fast/slow:
+            # if fast is above slow - open long position,
+            # if fast is below slow - open short position.
+            if (fast[i] > slow[i]) {
+                side <- TRUE
+                trades$buy[i] <- TRUE
+            } else {
+                side <- FALSE
+                trades$sell[i] <- TRUE
+            }
+        } else if (side) {
+            # Currently holding a long position.
+            # If fast goes below slow, sell.
+            if (fast[i] < slow[i]) {
+                side = FALSE
+                trades$sell[i] <- TRUE
+            }
+        } else {
+            # Currently holding a short position.
+            # If fast goes above slow, buy.
+            if (fast[i] > slow[i]) {
+                side = TRUE
+                trades$buy[i] <- TRUE
+            }
+        }
+    }
+
+    return (trades)
+}
+
+
+buildTradeDescription <- function(ts, price, trades) {
+    pos.direction <- c()
+    entry.date <- ts[0:0]
+    entry.price <- c()
+    exit.date <- ts[0:0]
+    exit.price <- c()
+    pl.abs <- c()
+    pl.pct <- c()
+    pl.annualized <- c()
+
+    curr.pos.direction <- NA
+    curr.entry.date <- NA
+    curr.entry.price <- NA
+
+    for (i in 1:length(ts)) {
+        if (trades$buy[i] | trades$sell[i]) {
+            if (!is.na(curr.pos.direction)) {
+                # Has an open position. Create a statistical record.
+
+                pos.direction <- c(pos.direction, curr.pos.direction)
+                entry.date <- c(entry.date, curr.entry.date)
+                entry.price <- c(entry.price, curr.entry.price)
+                exit.date <- c(exit.date, ts[i])
+                exit.price <- c(exit.price, price[i])
+
+                curr.pl.abs <- price[i] - curr.entry.price
+                if (curr.pos.direction == "SHORT") {
+                    curr.pl.abs <- -curr.pl.abs
+                }
+                pl.abs <- c(pl.abs, curr.pl.abs)
+
+                curr.pl.pct <- curr.pl.abs / curr.entry.price
+                pl.pct <- c(pl.pct, curr.pl.pct)
+
+                curr.pos.duration <- as.integer(ts[i] - curr.entry.date)
+                pl.annualized <- c(pl.annualized, curr.pl.pct * 365 / curr.pos.duration)
+            }
+
+            if (trades$buy[i]) {
+                curr.pos.direction <- "LONG"
+            } else {
+                curr.pos.direction <- "SHORT"
+            }
+            curr.entry.date <- ts[i]
+            curr.entry.price <- price[i]
+        }
+    }
+
+    data.frame("pos.direction" = pos.direction,
+               "entry.date" = entry.date,
+               "entry.price" = entry.price,
+               "exit.date" = exit.date,
+               "exit.price" = exit.price,
+               "pl.abs" = pl.abs,
+               "pl.pct" = pl.pct,
+               "pl.annualized" = pl.annualized)
+}
+
+
+
+buildCapital <- function(ts, price, trades) {
+    # Calculating capital changes in %. To get results in %, use initial capital
+    # of 1.0.
+    initialCapital <- 1.0
+
+    capital <- vector(mode = "numeric", length = length(ts))
+
+    curr.pos.direction <- NA
+    curr.pos.size <- NA
+    curr.entry.price <- NA
+    curr.entry.volume <- NA
+
+    for (i in 1:length(ts)) {
+        # Calculate current capital
+        if (is.na(curr.pos.direction)) {
+            # No trades done yet
+            capital[i] <- initialCapital
+        } else {
+            # Updating capital
+            curr.price.diff <- price[i] - curr.entry.price
+            if (curr.pos.direction == "SHORT") {
+                curr.price.diff <- -curr.price.diff
+            }
+            curr.volume.diff <- curr.pos.size * curr.price.diff
+            capital[i] <- curr.entry.volume + curr.volume.diff
+        }
+
+        if (trades$buy[i] | trades$sell[i]) {
+            # Executing trade
+
+            if (is.na(curr.pos.direction)) {
+                # Very first trade.
+                curr.pos.size <- initialCapital / price[i]
+            } else {
+                # Calculate current volume
+                curr.pos.size <- capital[i] / price[i]
+            }
+
+            if (trades$buy[i]) {
+                curr.pos.direction <- "LONG"
+            } else {
+                curr.pos.direction <- "SHORT"
+            }
+            curr.entry.price <- price[i]
+            curr.entry.volume <- curr.pos.size * curr.entry.price
+        }
+    }
+
+    return (capital)
+}
+
