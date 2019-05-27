@@ -15,41 +15,47 @@ library(plotly)
 # https://shiny.rstudio.com/reference/shiny/1.0.5/navbarPage.html
 
 # Define UI for application that draws a histogram
-shinyUI(fluidPage(
+shinyUI(navbarPage(
+    "Algorithmic Trading: Fast/Slow",
+    tabPanel("Trading",
 
-    # Application title
-    titlePanel("DAX Performance Index: Trading Fast/Slow"),
+             # Sidebar with a slider input for number of bins
+             sidebarLayout(
+                 sidebarPanel(
+                     p("Choose index/stock, fast/slow time period and trend indicator type. See 'About' in the menu above for details."),
+                     selectInput("symbol",
+                                 "Index / Stock:",
+                                 choices = symbols),
+                     sliderInput("days",
+                                 "Fast/Slow Indicator Periods, days:",
+                                 min = 10,
+                                 max = 200,
+                                 value = c(50, 150)),
+                     selectInput("fastIndicatorType",
+                                 "Fast Indicator:",
+                                 choices = trendTypes),
+                     selectInput("slowIndicatorType",
+                                 "Slow Indicator:",
+                                 choices = trendTypes)
+                 ),
 
-    # Sidebar with a slider input for number of bins
-    sidebarLayout(
-        sidebarPanel(
-            selectInput("symbol",
-                        "Index / Stock:",
-                        choices = symbols),
-            sliderInput("days",
-                        "Fast/Slow Indicator Periods, days:",
-                        min = 10,
-                        max = 200,
-                        value = c(50, 150)),
-            selectInput("fastIndicatorType",
-                        "Fast Indicator:",
-                        choices = trendTypes),
-            selectInput("slowIndicatorType",
-                        "Slow Indicator:",
-                        choices = trendTypes)
-        ),
-
-        # Show a plot of the generated distribution
-        mainPanel(
-            h2("Price & Capital"),
-            plotlyOutput("distPlot"),
-            textOutput("selectedDaysLow"),
-            textOutput("selectedDaysHigh"),
-            textOutput("selectedShowPrice"),
-            textOutput("selectedTrendType"),
-            textOutput("selectedShowTrend"),
-            h2("Trades"),
-            dataTableOutput("trades")
-        )
+                 # Show a plot of the generated distribution
+                 mainPanel(
+                     h2("Price & Capital"),
+                     plotlyOutput("distPlot"),
+                     textOutput("selectedDaysLow"),
+                     textOutput("selectedDaysHigh"),
+                     textOutput("selectedShowPrice"),
+                     textOutput("selectedTrendType"),
+                     textOutput("selectedShowTrend"),
+                     h2("Trades"),
+                     dataTableOutput("trades")
+                 )
+             )
+    ),
+    tabPanel("About",
+             column(8,
+                    includeMarkdown("about.md")
+             )
     )
 ))
