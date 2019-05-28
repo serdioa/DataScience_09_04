@@ -48,6 +48,8 @@ shinyUI(navbarPage(
                      textOutput("selectedShowPrice"),
                      textOutput("selectedTrendType"),
                      textOutput("selectedShowTrend"),
+                     h2("Statistics"),
+                     tableOutput("statistics"),
                      h2("Trades"),
                      dataTableOutput("trades")
                  )

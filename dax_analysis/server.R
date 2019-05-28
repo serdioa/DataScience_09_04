@@ -13,8 +13,51 @@ library(plotly)
 # Define server logic required to draw a histogram
 shinyServer(function(input, output) {
 
+    getReactivePrice <- reactive({
+        DAX[[input$symbol]]$ts
+    })
+
+    getReactiveFastTrend <- reactive({
+        ts <- getReactivePrice()
+        buildTrend(ts$adjusted, input$days[1], input$fastIndicatorType)
+    })
+
+    getReactiveSlowTrend <- reactive({
+        ts <- getReactivePrice()
+        buildTrend(ts$adjusted, input$days[2], input$slowIndicatorType)
+    })
+
+    getReactiveTrades <- reactive({
+        fastTrend <- getReactiveFastTrend()
+        slowTrend <- getReactiveSlowTrend()
+        trades <- findTrades(fastTrend, slowTrend)
+    })
+
+    getReactiveCapital <- reactive({
+        ts <- getReactivePrice()
+        trades <- getReactiveTrades()
+
+        buildCapital(ts$ts, ts$adjusted, trades)
+    })
+
+    getReactiveCapitalFitted <- reactive({
+        ts <- getReactivePrice()
+        capital <- getReactiveCapital()
+
+        capitalFitted <- lm(capital ~ ts$ts) %>% fitted.values()
+    })
+
+    getReactiveTradeDescription <- reactive({
+        ts <- getReactivePrice()
+        trades <- getReactiveTrades()
+
+        tradeDescription <- buildTradeDescription(ts$ts, ts$adjusted, trades)
+    })
+
     output$distPlot <- renderPlotly({
-        ts <- DAX[[input$symbol]]$ts
+        ts <- getReactivePrice()
+        # ts <- DAX[[input$symbol]]$ts
+
         pricePlot <- plot_ly(x = ts$ts)
         pricePlot <- pricePlot %>%
             add_trace(y = ts$adjusted, name = 'Price', type = 'scatter', mode = 'lines',
@@ -23,49 +66,51 @@ shinyServer(function(input, output) {
                           width = 1.5
                       ))
 
-        fastTrend <- buildTrend(ts$adjusted, input$days[1], input$fastIndicatorType)
-        slowTrend <- buildTrend(ts$adjusted, input$days[2], input$slowIndicatorType)
+        # fastTrend <- buildTrend(ts$adjusted, input$days[1], input$fastIndicatorType)
+        # slowTrend <- buildTrend(ts$adjusted, input$days[2], input$slowIndicatorType)
+        fastTrend <- getReactiveFastTrend()
+        slowTrend <- getReactiveSlowTrend()
 
         pricePlot <- pricePlot %>%
-            add_trace(y = fastTrend, name = 'Fast', type = 'scatter', mode = 'lines',
-                      line = list(
-                          color = 'rgb(255, 140, 0)',
-                          width = 2
-                      ))
-        pricePlot <- pricePlot %>%
-            add_trace(y = slowTrend, name = 'Slow', type = 'scatter', mode = 'lines',
-                      line = list(
-                          color = 'rgb(0, 64, 255)',
-                          width = 2
-                      ))
+             add_trace(y = fastTrend, name = 'Fast', type = 'scatter', mode = 'lines',
+                       line = list(
+                           color = 'rgb(255, 140, 0)',
+                           width = 2
+                       ))
+         pricePlot <- pricePlot %>%
+             add_trace(y = slowTrend, name = 'Slow', type = 'scatter', mode = 'lines',
+                       line = list(
+                           color = 'rgb(0, 64, 255)',
+                           width = 2
+                       ))
 
-        trades <- findTrades(fastTrend, slowTrend)
+         trades <- getReactiveTrades()
 
-        buyTrades <- rep(NA, length(fastTrend))
-        buyTrades[trades$buy] <- ts$adjusted[trades$buy]
+         buyTrades <- rep(NA, length(fastTrend))
+         buyTrades[trades$buy] <- ts$adjusted[trades$buy]
 
-        sellTrades <- rep(NA, length(fastTrend))
-        sellTrades[trades$sell] <- ts$adjusted[trades$sell]
+         sellTrades <- rep(NA, length(fastTrend))
+         sellTrades[trades$sell] <- ts$adjusted[trades$sell]
 
-        pricePlot <- pricePlot %>%
-            add_trace(y = buyTrades, name = 'Buy', type = 'scatter', mode = 'markers',
-                      marker = list(
-                          color = 'rgb(0, 192, 0)',
-                          size = 12
-                      )) %>%
-            add_trace(y = sellTrades, name = 'Sell', type = 'scatter', mode = 'markers',
-                      marker = list(
-                          color = 'rgb(192, 0, 0)',
-                          size = 12
-                      )) %>%
-            layout(yaxis = list(
-                title = "Price"
-            ))
+         pricePlot <- pricePlot %>%
+             add_trace(y = buyTrades, name = 'Buy', type = 'scatter', mode = 'markers',
+                       marker = list(
+                           color = 'rgb(0, 192, 0)',
+                           size = 12
+                       )) %>%
+             add_trace(y = sellTrades, name = 'Sell', type = 'scatter', mode = 'markers',
+                       marker = list(
+                           color = 'rgb(192, 0, 0)',
+                           size = 12
+                       )) %>%
+             layout(yaxis = list(
+                 title = "Price"
+             ))
 
         # Calculate development of capital.
         # Multiply by 100 to get as %.
-        capital <- 100 * buildCapital(ts$ts, ts$adjusted, trades)
-        capitalFitted <- lm(capital ~ ts$ts) %>% fitted.values()
+        capital <- getReactiveCapital() * 100
+        capitalFitted <- getReactiveCapitalFitted() * 100
 
         capitalPlot <- plot_ly(x = ts$ts) %>%
             add_trace(y = capital, name = "Capital, %", type = "scatter", mode = "lines",
@@ -79,7 +124,7 @@ shinyServer(function(input, output) {
                       width = 2
                   )) %>%
             layout(yaxis = list(
-                title = "Capital"
+                title = "Capital, %"
             ))
 
         # Combine plots
@@ -93,14 +138,52 @@ shinyServer(function(input, output) {
         return (combinedPlot)
     })
 
+
+    output$statistics <- renderTable({
+        ts <- getReactivePrice()
+        trades <- getReactiveTrades()
+        tradeDescription <- getReactiveTradeDescription()
+        capital <- getReactiveCapital()
+
+        # Total number of trades
+        numberOfTrades <- nrow(tradeDescription)
+
+        # Percentage of profitable trades
+        numberOfProfitableTrades <- nrow(tradeDescription[tradeDescription$pl.abs > 0,])
+        if (numberOfTrades > 0) {
+            pctOfProfitableTrades <- numberOfProfitableTrades / numberOfTrades
+        } else {
+            pctOfProfitableTrades <- 0
+        }
+
+        # Average keep time for a trade.
+        averageKeepTime <- mean(apply(tradeDescription, 1, function(x) {as.numeric(as.Date(x[4]) - as.Date(x[2]))}))
+
+        # Annualized rate of return.
+        totalRateOfReturn <- capital[length(capital)] - 1.0
+        totalDurationDays <- as.numeric(ts$ts[nrow(ts)] - ts$ts[1])
+        annualizedRateOfReturn <- totalRateOfReturn * 365 / totalDurationDays
+
+        data.frame(c("Number of trades",
+                     "Average time period between trades, days",
+                     "Percentage of profitable trades",
+                     "Annualized rate of return, %"),
+                   c(sprintf("%.0f", numberOfTrades),
+                     sprintf("%.0f", averageKeepTime),
+                     sprintf("%.2f%%", pctOfProfitableTrades * 100),
+                     sprintf("%.2f%%", annualizedRateOfReturn * 100)))
+    }, colnames = FALSE)
+
     output$trades <- renderDataTable({
-        ts <- DAX[[input$symbol]]$ts
+        # ts <- DAX[[input$symbol]]$ts
 
-        fastTrend <- buildTrend(ts$adjusted, input$days[1], input$fastIndicatorType)
-        slowTrend <- buildTrend(ts$adjusted, input$days[2], input$slowIndicatorType)
+        #fastTrend <- buildTrend(ts$adjusted, input$days[1], input$fastIndicatorType)
+        #slowTrend <- buildTrend(ts$adjusted, input$days[2], input$slowIndicatorType)
 
-        trades <- findTrades(fastTrend, slowTrend)
-        tradeDescription <- buildTradeDescription(ts$ts, ts$adjusted, trades)
+        # trades <- findTrades(fastTrend, slowTrend)
+        # tradeDescription <- buildTradeDescription(ts$ts, ts$adjusted, trades)
+
+        tradeDescription <- getReactiveTradeDescription()
 
         # Transform to %
         tradeDescription$pl.pct <- round(tradeDescription$pl.pct * 100, digits = 4)
