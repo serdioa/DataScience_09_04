@@ -28,7 +28,8 @@ or any of 30 stocks included into the DAX.
 
 * Choose functions to calculate fast and slow trend indicators. You may start
 with SMA (simple moving average) or EMA (exponential moving average) covered by
-Coursera lectures, and later try other indicators.
+Coursera lectures, and later try other indicators based on theory of digital
+signal processing.
 
 In the right panel you will find results of the algorithm applied to historical
 market prices:
@@ -71,8 +72,8 @@ for a fast / slow indicators. If an indicator follows price too close, it keeps
 some of the random noise present in the price, generating many whipsaw trades
 and losing you money. On the other hand, if the indicator is smooth enough to
 exclude all the random noise, it falls behind the price too much. As a result,
-when the trend changes direction, you may loose a lot money before the indicator
-"notices" the change.
+when the trend changes direction, you may loose a lot of money before the
+indicator "notices" the change.
 
 Using this application, you have an opportunity to find profitable parameters
 without risking your money.
