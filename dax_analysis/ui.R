@@ -9,10 +9,7 @@
 
 library(shiny)
 library(plotly)
-
-# Navbar
-# https://shiny.rstudio.com/gallery/navbar-example.html
-# https://shiny.rstudio.com/reference/shiny/1.0.5/navbarPage.html
+library(markdown)
 
 # Define UI for application that draws a histogram
 shinyUI(navbarPage(

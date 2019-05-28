@@ -15,4 +15,3 @@ trendTypes <- list("Simple moving average" = "SMA",
                    "Buttleworth 2-Pole" = "B2P",
                    "Buttleworth 3-Pole" = "B3P",
                    "Low-Pass" = "LP")
-
