@@ -6,3 +6,4 @@ This repository contains a course project for Week 4 of the course
 
 A presentation is published on [GitHub Pages](https://serdioa.github.io/DataScience_09_04/presentation).
 
+The application is available on shinyapps: https://serdioa.shinyapps.io/fast_slow_analysis
